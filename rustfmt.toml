@@ -1,0 +1,35 @@
+# ───────────────
+# Edition
+# ───────────────
+edition = "2024"
+
+# ───────────────
+# Style
+# ───────────────
+max_width = 100
+use_small_heuristics = "Max"
+newline_style = "Unix"
+reorder_imports = true
+reorder_modules = true
+group_imports = "StdExternalCrate"
+
+# ───────────────
+# Formatting Details
+# ───────────────
+wrap_comments = true
+format_code_in_doc_comments = true
+normalize_comments = true
+format_strings = true
+
+# ───────────────
+# Struct & Enum Layout
+# ───────────────
+struct_lit_single_line = false
+fn_single_line = false
+where_single_line = false
+
+# ───────────────
+# Misc
+# ───────────────
+imports_granularity = "Crate"
+overflow_delimited_expr = true

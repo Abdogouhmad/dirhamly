@@ -1,0 +1,16 @@
+# Avoid extremely long functions
+too-many-lines-threshold = 100
+
+# Encourage smaller functions
+too-many-arguments-threshold = 5
+
+# Cognitive complexity control
+cognitive-complexity-threshold = 20
+
+# Enum variant size difference warning
+enum-variant-size-threshold = 200
+
+# Allow certain common patterns
+allow-print-in-tests = true
+allow-expect-in-tests = true
+allow-unwrap-in-tests = true
