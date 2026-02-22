@@ -1,0 +1,11 @@
+        // let mut stmt = self.conn.prepare("SELECT tx_type, amount, category, description, date FROM transactions")?;
+        // let transaction_iter = stmt.query_map([], |row| {
+        //     Ok(Transaction {
+        //         tx_type: row.get::<_, String>(0)?.parse().unwrap(), // Convert string back to TransactionType
+        //         amount: row.get::<_, String>(1)?.parse().unwrap(),  // Convert string back to Decimal
+        //         category: row.get::<_, String>(2)?.parse().unwrap(), // Convert string back to Category
+        //         description: row.get(3)?,
+        //         date: row.get::<_, String>(4)?.parse().unwrap(), // Convert string back to NaiveDate
+        //     })
+        // })?;
+        // Ok(transaction_iter.collect::<Result<Vec<_>, _>>()?)
