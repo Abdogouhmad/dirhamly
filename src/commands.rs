@@ -1,9 +1,9 @@
+use crate::{models::Transaction, utils::format_list};
 use chrono::{Local, NaiveDate};
 use clap::{Parser, Subcommand, ValueEnum};
 use rust_decimal::Decimal;
 use strum::EnumString;
 use strum_macros::{Display, VariantNames};
-use crate::{models::Transaction, utils::format_list};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -150,7 +150,7 @@ impl DirhamlyCli {
             // NOTE: bring from database and filter by the provided criteria (date range, type of transaction, category)
             Command::List(args) => {
                 println!("--- Transactions ---");
-                
+
                 // Call the get_transactions method from db.rs
                 match db.get_transactions(args.from, args.to, args.tx_type, args.category) {
                     Ok(transactions) => {

@@ -1,4 +1,7 @@
-use crate::{commands::{Category, TransactionType}, models::Transaction};
+use crate::{
+    commands::{Category, TransactionType},
+    models::Transaction,
+};
 use chrono::NaiveDate;
 use rusqlite::{Connection, Result, params};
 use rust_decimal::Decimal;
@@ -52,7 +55,9 @@ impl Database {
         category: Option<Category>,
     ) -> Result<Vec<Transaction>> {
         // 1. Build the SQL query dynamically based on what filters are provided
-        let mut query = "SELECT id, tx_type, amount, category, description, date FROM transactions WHERE 1=1".to_string();
+        let mut query =
+            "SELECT id, tx_type, amount, category, description, date FROM transactions WHERE 1=1"
+                .to_string();
         let mut params: Vec<String> = Vec::new();
 
         if let Some(f) = from {
@@ -86,28 +91,41 @@ impl Database {
             let description: String = row.get(4)?;
             let date_str: String = row.get(5)?;
 
-            // Parse strings back into Rust types. 
+            // Parse strings back into Rust types.
             // If parsing fails, we return a database error.
-            let tx_type = TransactionType::from_str(&tx_type_str)
-                .map_err(|_| rusqlite::Error::InvalidColumnType(1, "tx_type".to_string(), rusqlite::types::Type::Text))?;
-            
-            let amount = Decimal::from_str(&amount_str)
-                .map_err(|_| rusqlite::Error::InvalidColumnType(2, "amount".to_string(), rusqlite::types::Type::Text))?;
-                
-            let category = Category::from_str(&category_str)
-                .map_err(|_| rusqlite::Error::InvalidColumnType(3, "category".to_string(), rusqlite::types::Type::Text))?;
-                
-            let date = NaiveDate::parse_from_str(&date_str, "%Y-%m-%d")
-                .map_err(|_| rusqlite::Error::InvalidColumnType(5, "date".to_string(), rusqlite::types::Type::Text))?;
+            let tx_type = TransactionType::from_str(&tx_type_str).map_err(|_| {
+                rusqlite::Error::InvalidColumnType(
+                    1,
+                    "tx_type".to_string(),
+                    rusqlite::types::Type::Text,
+                )
+            })?;
 
-            Ok(Transaction {
-                id: row.get(0)?,
-                tx_type,
-                amount,
-                category,
-                description,
-                date,
-            })
+            let amount = Decimal::from_str(&amount_str).map_err(|_| {
+                rusqlite::Error::InvalidColumnType(
+                    2,
+                    "amount".to_string(),
+                    rusqlite::types::Type::Text,
+                )
+            })?;
+
+            let category = Category::from_str(&category_str).map_err(|_| {
+                rusqlite::Error::InvalidColumnType(
+                    3,
+                    "category".to_string(),
+                    rusqlite::types::Type::Text,
+                )
+            })?;
+
+            let date = NaiveDate::parse_from_str(&date_str, "%Y-%m-%d").map_err(|_| {
+                rusqlite::Error::InvalidColumnType(
+                    5,
+                    "date".to_string(),
+                    rusqlite::types::Type::Text,
+                )
+            })?;
+
+            Ok(Transaction { id: row.get(0)?, tx_type, amount, category, description, date })
         })?;
 
         // Collect the iterator into a Vec
