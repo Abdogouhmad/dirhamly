@@ -1,9 +1,12 @@
-use crate::{models::Transaction, utils::format_list};
+use anyhow::Result;
 use chrono::{Local, NaiveDate};
 use clap::{Parser, Subcommand, ValueEnum};
 use rust_decimal::Decimal;
-use strum::EnumString;
-use strum_macros::{Display, VariantNames};
+use strum_macros::{Display, EnumString, VariantNames};
+
+use crate::db::Database;
+use crate::models::Transaction;
+use crate::utils::{export_transactions, format_list};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -11,7 +14,8 @@ use strum_macros::{Display, VariantNames};
     version = env!("CARGO_PKG_VERSION"),
     about = env!("CARGO_PKG_DESCRIPTION"),
     author = env!("CARGO_PKG_AUTHORS"),
-    propagate_version = true
+    propagate_version = true,
+    arg_required_else_help = true
 )]
 pub struct DirhamlyCli {
     #[command(subcommand)]
@@ -20,161 +24,158 @@ pub struct DirhamlyCli {
 
 #[derive(Subcommand, Debug)]
 pub enum Command {
-    /// Add a new transaction (income or expense)
+    /// Add a new income or expense transaction
+    #[command(about = "Add a new income or expense transaction")]
     Add(AddArgs),
 
-    /// List all transactions
-    List(ListArgs),
+    /// List transactions (with optional filters)
+    #[command(about = "Display transactions in a formatted table")]
+    Read(ReadArgs),
 
-    /// Generate a summary report
-    Summary(SummaryArgs),
+    /// Export transactions to CSV or PDF report
+    #[command(about = "Export filtered transactions to CSV or styled PDF")]
+    Export(ExportArgs),
+
+    /// Remov the operation by its id
+    Remove(RemoveArgs),
 }
 
-#[derive(Parser, Debug, PartialEq)]
+#[derive(Parser, Debug)]
 pub struct AddArgs {
-    /// Type of transaction (income or expense)
+    /// Transaction type (income or expense)
     #[arg(value_enum)]
     pub tx_type: TransactionType,
 
-    /// Amount of the transaction (e.g., 25.50)
+    /// Amount (e.g. 250.75)
     pub amount: Decimal,
 
-    /// Category of the transaction
-    #[arg(value_enum)]
-    pub category: Category,
+    /// Category (e.g. Salary, Food, Rent)
+    #[arg(short, long)]
+    pub category: String,
 
-    /// Description of the transaction
+    /// Optional description
     #[arg(short, long)]
     pub description: String,
 
-    /// Date of the transaction (YYYY-MM-DD). Defaults to today if omitted.
+    /// Transaction date (YYYY-MM-DD). Defaults to today.
     #[arg(long)]
     pub date: Option<NaiveDate>,
 }
 
-#[derive(Parser, Debug, PartialEq)]
-pub struct ListArgs {
-    /// Filter by transaction type
-    #[arg(short, long, value_enum)]
-    pub tx_type: Option<TransactionType>,
-
-    /// Filter by category
-    #[arg(short, long, value_enum)]
-    pub category: Option<Category>,
-
-    /// Filter from date (YYYY-MM-DD)
-    #[arg(long)]
-    pub from: Option<NaiveDate>,
-
-    /// Filter to date (YYYY-MM-DD)
-    #[arg(long)]
-    pub to: Option<NaiveDate>,
-}
-
-#[derive(Parser, Debug, PartialEq)]
-pub struct SummaryArgs {
-    /// Summarize by period
-    #[arg(short, long, value_enum)]
-    pub period: Option<Period>,
-
-    // /// Filter by category
-    #[arg(short, long, value_enum)]
-    pub category: Option<Category>,
-}
-
-// --- ENUMS ---
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Display, EnumString, VariantNames)]
+#[derive(Debug, Clone, Copy, ValueEnum, Display, EnumString, VariantNames)]
+#[strum(serialize_all = "lowercase")]
+#[strum(ascii_case_insensitive)]
 pub enum TransactionType {
     Income,
     Expense,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, EnumString, Display, VariantNames)]
-pub enum Category {
-    // Expense Categories
-    Food,
-    Transport,
-    Utilities,
-    Entertainment,
-    Health,
-    Withdrawals,
-    // Income Categories
-    Salary,
-    Gift,
-    Investment,
-    // General
-    Other,
+#[derive(Parser, Debug)]
+pub struct ReadArgs {
+    /// Start date filter (YYYY-MM-DD)
+    #[arg(long)]
+    pub from: Option<NaiveDate>,
+
+    /// End date filter (YYYY-MM-DD)
+    #[arg(long)]
+    pub to: Option<NaiveDate>,
+
+    /// Filter by transaction type
+    #[arg(long, value_enum)]
+    pub tx_type: Option<TransactionType>,
+
+    /// Filter by category
+    #[arg(short, long)]
+    pub category: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, EnumString, Display, VariantNames)]
-pub enum Period {
-    Daily,
-    Weekly,
-    Monthly,
-    Yearly,
+#[derive(Parser, Debug)]
+pub struct ExportArgs {
+    /// Output format
+    #[arg(value_enum)]
+    pub format: ExportFormat,
+
+    /// Start date filter (YYYY-MM-DD)
+    #[arg(long)]
+    pub from: Option<NaiveDate>,
+
+    /// End date filter (YYYY-MM-DD)
+    #[arg(long)]
+    pub to: Option<NaiveDate>,
+
+    /// Filter by transaction type
+    #[arg(long, value_enum)]
+    pub tx_type: Option<TransactionType>,
+
+    /// Filter by category
+    #[arg(short, long)]
+    pub category: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum, Display, EnumString, VariantNames)]
+#[strum(serialize_all = "lowercase")]
+pub enum ExportFormat {
+    Csv,
+    Pdf,
+}
+
+#[derive(Parser, Debug, Clone, Copy)]
+pub struct RemoveArgs {
+    /// filter by ID to remove the data from the database
+    #[arg(long, value_enum)]
+    pub id: i64,
 }
 
 impl DirhamlyCli {
-    /// Executes the parsed command by matching on the command type
-    pub fn run(&self, db: &crate::db::Database) {
-        println!("--- Executing Command ---");
+    pub fn run(&self, db: &Database) -> Result<()> {
         match &self.command {
-            Command::Add(args) => {
-                // If date is None, fallback to today's local date
-                let date = args.date.unwrap_or_else(|| Local::now().date_naive());
-
-                // Construct the Transaction model
-                let transaction = Transaction::new(
-                    args.tx_type,
-                    args.amount,
-                    args.category,
-                    args.description.clone(),
-                    date,
-                );
-
-                // Insert into the database
-                match db.add_transaction(&transaction) {
-                    Ok(_) => {
-                        println!(
-                            "✅ Added {} of {} MAD for {} on {}",
-                            transaction.tx_type,
-                            transaction.amount,
-                            transaction.category,
-                            transaction.date
-                        );
-                    }
-                    Err(e) => eprintln!("❌ Failed to save transaction: {}", e),
-                }
-            }
-            // NOTE: bring from database and filter by the provided criteria (date range, type of transaction, category)
-            Command::List(args) => {
-                println!("--- Transactions ---");
-
-                // Call the get_transactions method from db.rs
-                match db.get_transactions(args.from, args.to, args.tx_type, args.category) {
-                    Ok(transactions) => {
-                        if transactions.is_empty() {
-                            println!("No transactions found matching your criteria.");
-                        } else {
-                            // Loop through and display each transaction
-                            format_list(&transactions);
-                        }
-                    }
-                    Err(e) => eprintln!("❌ Failed to retrieve transactions: {}", e),
-                }
-            }
-            // NOTE: bring from database and summarize by the provided criteria (period, category)
-            // and calculate: Food - 1000 (10% of total expenses), Salary - 5000 (50% of total income), etc.
-            Command::Summary(args) => {
-                println!("Action: Generate Summary");
-                if let Some(period) = &args.period {
-                    println!("Period: {}", period);
-                }
-                if let Some(category) = &args.category {
-                    println!("Filter Category: {}", category);
-                }
-            }
+            Command::Add(args) => self.handle_add(db, args),
+            Command::Read(args) => self.handle_read(db, args),
+            Command::Export(args) => self.handle_export(db, args),
+            Command::Remove(args) => self.remove_byid(db, args),
         }
+    }
+
+    fn handle_add(&self, db: &Database, args: &AddArgs) -> Result<()> {
+        let date = args.date.unwrap_or_else(|| Local::now().date_naive());
+
+        let transaction = Transaction::new(
+            args.tx_type,
+            args.amount,
+            args.category.clone(),
+            args.description.clone(),
+            date,
+        );
+
+        db.add_transaction(&transaction)?;
+        println!("Transaction added successfully.");
+
+        Ok(())
+    }
+
+    fn handle_read(&self, db: &Database, args: &ReadArgs) -> Result<()> {
+        let transactions =
+            db.get_transactions(args.from, args.to, args.tx_type, args.category.clone())?;
+
+        format_list(&transactions);
+        Ok(())
+    }
+
+    fn handle_export(&self, db: &Database, args: &ExportArgs) -> Result<()> {
+        let transactions =
+            db.get_transactions(args.from, args.to, args.tx_type, args.category.clone())?;
+
+        if transactions.is_empty() {
+            println!("No transactions match the specified filters.");
+            return Ok(());
+        }
+
+        export_transactions(&transactions, args.format)?;
+        Ok(())
+    }
+    fn remove_byid(&self, db: &Database, args: &RemoveArgs) -> Result<()> {
+        let rows = db.delete_by_id(args)?;
+        println!("Deleted {} row(s) for id {}", rows, args.id);
+        Ok(())
     }
 }

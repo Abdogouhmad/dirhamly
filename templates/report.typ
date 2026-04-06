@@ -1,3 +1,5 @@
+// Decode the JSON string passed from Rust via sys.inputs
+#let data = json.decode(sys.inputs.data)
 // Page setup
 #set page(paper: "a4", margin: 2cm)
 #set text(font: "Noto Sans", size: 10pt)
@@ -5,7 +7,7 @@
 
 // --- Header Section ---
 #align(center)[
-  #text(size: 24pt, weight: "bold", fill: rgb("#111827"))[MadTrack Expense Report]\
+  #text(size: 24pt, weight: "bold", fill: rgb("#111827"))[Dirhamly Expense Report]\
   #v(0.5cm)
   #text(size: 16pt, weight: "medium", fill: rgb("#6b7280"))[February 2026]
 ]
@@ -56,21 +58,27 @@
 #v(0.5cm)
 
 #table(
-  columns: (auto, 1fr, auto, auto),
+  // 1. Add two more column widths (e.g., auto for Type, 1fr for Description)
+  columns: (auto, auto, auto, 1fr, auto, auto), 
+  // ...
   stroke: none,
   // Alternating row colors, with a distinct header color
   fill: (_, row) => if row == 0 { rgb("#f3f4f6") } else if calc.rem(row, 2) == 0 { rgb("#f9fafb") } else { white },
   // Right-align the Amount column (index 2)
   align: (col, _) => if col == 2 { right } else { left },
   
+  // 2. Add Type and Description to the header
   table.header(
-    [*ID*], [*Category*], [*Amount*], [*Date*]
+    [*ID*], [*Type*], [*Category*], [*Description*], [*Amount*], [*Date*]
   ),
   
+  // 3. Add tx_type and description to the mapping
   ..data.transactions.map(t =>
     (
       [#t.id],
+      [#t.tx_type],
       [#t.category],
+      [#t.description],
       [#calc.round(t.amount, digits: 2) MAD],
       [#t.date],
     )

@@ -13,5 +13,5 @@ fn main() {
     db.initialize().expect("Failed to initialize database");
 
     let cli = DirhamlyCli::parse();
-    cli.run(&db);
+    cli.run(&db).unwrap();
 }

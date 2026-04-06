@@ -1,16 +1,6 @@
-# ─────────────────────────────
-# Project
-# ─────────────────────────────
 BINARY = dirhamly
 
-# ─────────────────────────────
-# Default Target
-# ─────────────────────────────
 .DEFAULT_GOAL := help
-
-# ─────────────────────────────
-# Development
-# ─────────────────────────────
 run:
 	cargo run
 
@@ -23,9 +13,6 @@ build:
 release:
 	cargo build --release
 
-# ─────────────────────────────
-# Quality
-# ─────────────────────────────
 fmt:
 	cargo fmt
 
@@ -41,21 +28,15 @@ lint:
 test:
 	cargo test
 
-# ─────────────────────────────
-# Clean
-# ─────────────────────────────
 clean:
 	cargo clean
 
-# ─────────────────────────────
-# Full CI Simulation
-# ─────────────────────────────
 ci: fmt-check lint test
 	@echo "All checks passed ✅"
 
-# ─────────────────────────────
-# Help
-# ─────────────────────────────
+export:
+	rm report.pdf
+	cargo r -- export pdf
 help:
 	@echo ""
 	@echo "Available commands:"
@@ -70,4 +51,5 @@ help:
 	@echo "  make test       - Run tests"
 	@echo "  make ci         - Run full CI checks"
 	@echo "  make clean      - Clean target directory"
+	@echo "  make export     - export data to pdf"
 	@echo ""

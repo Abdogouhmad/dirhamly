@@ -1,11 +1,15 @@
+use std::str::FromStr;
+
 use crate::{
-    commands::{Category, TransactionType},
+    commands::{RemoveArgs, TransactionType},
     models::Transaction,
 };
 use chrono::NaiveDate;
-use rusqlite::{Connection, Result, params};
+// use chrono::NaiveDate;
+use rusqlite::{Connection, Result, Row, params};
 use rust_decimal::Decimal;
-use std::str::FromStr;
+// use rust_decimal::Decimal;
+// use std::str::FromStr;
 
 pub struct Database {
     conn: Connection,
@@ -46,94 +50,94 @@ impl Database {
         Ok(())
     }
     // for viewing transactions, we can implement a method like this:
-    /// Retrieve transactions filtered by optional criteria
+    // Retrieve transactions filtered by optional criteria
+    /// Retrieve transactions with optional filters.
+    /// - `from` / `to`: date range (inclusive)
+    /// - `tx_type`: optional transaction type filter
+    /// - `category`: optional category filter (pass `None` or empty string to ignore)
     pub fn get_transactions(
         &self,
         from: Option<NaiveDate>,
         to: Option<NaiveDate>,
         tx_type: Option<TransactionType>,
-        category: Option<Category>,
+        category: Option<String>, // ← changed to Option<String>
     ) -> Result<Vec<Transaction>> {
-        // 1. Build the SQL query dynamically based on what filters are provided
-        let mut query =
-            "SELECT id, tx_type, amount, category, description, date FROM transactions WHERE 1=1"
-                .to_string();
-        let mut params: Vec<String> = Vec::new();
+        let mut query = String::from(
+            "SELECT id, tx_type, amount, category, description, date 
+             FROM transactions 
+             WHERE 1=1",
+        );
 
-        if let Some(f) = from {
-            query.push_str(&format!(" AND date >= ?{}", params.len() + 1));
-            params.push(f.to_string());
-        }
-        if let Some(t) = to {
-            query.push_str(&format!(" AND date <= ?{}", params.len() + 1));
-            params.push(t.to_string());
-        }
-        if let Some(t_type) = tx_type {
-            query.push_str(&format!(" AND tx_type = ?{}", params.len() + 1));
-            params.push(t_type.to_string());
-        }
-        if let Some(cat) = category {
-            query.push_str(&format!(" AND category = ?{}", params.len() + 1));
-            params.push(cat.to_string());
+        let from_str = from.map(|f| f.to_string());
+        let to_str = to.map(|t| t.to_string());
+        let tx_type_str = tx_type.map(|t| t.to_string());
+
+        let mut params: Vec<&dyn rusqlite::ToSql> = Vec::new();
+
+        if let Some(f) = &from_str {
+            query.push_str(" AND date >= ?");
+            params.push(f);
         }
 
+        if let Some(t) = &to_str {
+            query.push_str(" AND date <= ?");
+            params.push(t);
+        }
+
+        if let Some(t_type) = &tx_type_str {
+            query.push_str(" AND tx_type = ?");
+            params.push(t_type);
+        }
+
+        if let Some(cat) = &category {
+            if !cat.is_empty() {
+                query.push_str(" AND category = ?");
+                params.push(cat);
+            }
+        }
+
+        // Almost always useful: sort by date descending
         query.push_str(" ORDER BY date DESC");
 
-        // 2. Prepare and execute the query
         let mut stmt = self.conn.prepare(&query)?;
 
-        // 3. Map the database rows back into Rust `Transaction` structs
         let transaction_iter = stmt.query_map(rusqlite::params_from_iter(params), |row| {
-            // Get raw strings from the database
-            let tx_type_str: String = row.get(1)?;
-            let amount_str: String = row.get(2)?;
-            let category_str: String = row.get(3)?;
-            let description: String = row.get(4)?;
-            let date_str: String = row.get(5)?;
-
-            // Parse strings back into Rust types.
-            // If parsing fails, we return a database error.
-            let tx_type = TransactionType::from_str(&tx_type_str).map_err(|_| {
-                rusqlite::Error::InvalidColumnType(
-                    1,
-                    "tx_type".to_string(),
-                    rusqlite::types::Type::Text,
-                )
-            })?;
-
-            let amount = Decimal::from_str(&amount_str).map_err(|_| {
-                rusqlite::Error::InvalidColumnType(
-                    2,
-                    "amount".to_string(),
-                    rusqlite::types::Type::Text,
-                )
-            })?;
-
-            let category = Category::from_str(&category_str).map_err(|_| {
-                rusqlite::Error::InvalidColumnType(
-                    3,
-                    "category".to_string(),
-                    rusqlite::types::Type::Text,
-                )
-            })?;
-
-            let date = NaiveDate::parse_from_str(&date_str, "%Y-%m-%d").map_err(|_| {
-                rusqlite::Error::InvalidColumnType(
-                    5,
-                    "date".to_string(),
-                    rusqlite::types::Type::Text,
-                )
-            })?;
-
-            Ok(Transaction { id: row.get(0)?, tx_type, amount, category, description, date })
+            Self::map_row_to_transaction(row)
         })?;
 
-        // Collect the iterator into a Vec
         let mut transactions = Vec::new();
-        for tx in transaction_iter {
-            transactions.push(tx?);
+        for result in transaction_iter {
+            transactions.push(result?);
         }
 
         Ok(transactions)
+    }
+
+    /// Helper to map a database row → Transaction struct
+    /// Returns error instead of panicking if parsing fails
+    fn map_row_to_transaction(row: &Row<'_>) -> rusqlite::Result<Transaction> {
+        let id: i64 = row.get(0)?;
+        let tx_type_str: String = row.get(1)?;
+        let amount_str: String = row.get(2)?;
+        let category: String = row.get(3)?;
+        let description: String = row.get(4)?;
+        let date_str: String = row.get(5)?;
+
+        let tx_type = TransactionType::from_str(&tx_type_str)
+            .map_err(|e| rusqlite::Error::InvalidParameterName(format!("Invalid tx_type: {e}")))?;
+
+        let amount = Decimal::from_str(&amount_str)
+            .map_err(|e| rusqlite::Error::InvalidParameterName(format!("Invalid amount: {e}")))?;
+
+        let date = NaiveDate::parse_from_str(&date_str, "%Y-%m-%d").map_err(|e| {
+            rusqlite::Error::InvalidParameterName(format!("Invalid date format: {e}"))
+        })?;
+
+        Ok(Transaction { id: Some(id), tx_type, amount, category, description, date })
+    }
+
+    /// fn that remove the data from the database based on the id
+    pub fn delete_by_id(&self, target: &RemoveArgs) -> Result<usize, rusqlite::Error> {
+        self.conn.execute("DELETE FROM transactions WHERE id = ?1", params![target.id])
     }
 }
